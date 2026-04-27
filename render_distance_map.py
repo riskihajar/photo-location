@@ -190,6 +190,41 @@ def reverse_geocode(api_key, point, language):
     }
 
 
+def get_route_info(api_key, point_a, point_b, route_mode):
+    straight_distance = haversine_distance_meters(point_a, point_b)
+    if route_mode == "straight":
+        lat1, lng1 = point_a
+        lat2, lng2 = point_b
+        return {
+            "distance_m": straight_distance,
+            "path": f"{lat1},{lng1}|{lat2},{lng2}",
+            "label": "Garis lurus",
+        }
+
+    lat1, lng1 = point_a
+    lat2, lng2 = point_b
+    data = google_get_json(
+        "https://maps.googleapis.com/maps/api/directions/json",
+        {
+            "origin": f"{lat1},{lng1}",
+            "destination": f"{lat2},{lng2}",
+            "mode": route_mode,
+            "alternatives": "false",
+            "key": api_key,
+        },
+    )
+    route = data["routes"][0]
+    distance_m = sum(leg.get("distance", {}).get("value", 0) for leg in route.get("legs", []))
+    encoded_polyline = route.get("overview_polyline", {}).get("points")
+    if not encoded_polyline:
+        raise RuntimeError("Directions API did not return an overview polyline.")
+    return {
+        "distance_m": distance_m or straight_distance,
+        "path": f"enc:{encoded_polyline}",
+        "label": route_mode.capitalize(),
+    }
+
+
 def build_location_title(components):
     city = component_value(
         components,
@@ -209,7 +244,7 @@ def component_value(components, types):
     return ""
 
 
-def download_static_route_map(api_key, point_a, point_b, size, scale, maptype):
+def download_static_route_map(api_key, point_a, point_b, route_path, size, scale, maptype):
     lat1, lng1 = point_a
     lat2, lng2 = point_b
     response = requests.get(
@@ -218,7 +253,7 @@ def download_static_route_map(api_key, point_a, point_b, size, scale, maptype):
             "size": size,
             "scale": scale,
             "maptype": maptype,
-            "path": f"color:0x0B72F6FF|weight:6|{lat1},{lng1}|{lat2},{lng2}",
+            "path": f"color:0x0B72F6FF|weight:6|{route_path}",
             "markers": [
                 f"color:green|label:A|{lat1},{lng1}",
                 f"color:red|label:B|{lat2},{lng2}",
@@ -235,7 +270,21 @@ def download_static_route_map(api_key, point_a, point_b, size, scale, maptype):
     return response.content
 
 
-def render_route_report(api_key, point_a, point_b, output_path, size, scale, maptype, distance_m, bearing, location_a, location_b):
+def render_route_report(
+    api_key,
+    point_a,
+    point_b,
+    route_path,
+    route_label,
+    output_path,
+    size,
+    scale,
+    maptype,
+    distance_m,
+    bearing,
+    location_a,
+    location_b,
+):
     final_width, final_height = parse_size(size)
     final_width *= scale
     final_height *= scale
@@ -256,7 +305,7 @@ def render_route_report(api_key, point_a, point_b, output_path, size, scale, map
     panel_height = min(max(panel_height, int(final_height * 0.20)), int(final_height * 0.32))
     map_height = final_height - panel_height
     request_size = f"{final_width // scale}x{map_height // scale}"
-    map_bytes = download_static_route_map(api_key, point_a, point_b, request_size, scale, maptype)
+    map_bytes = download_static_route_map(api_key, point_a, point_b, route_path, request_size, scale, maptype)
     map_image = Image.open(BytesIO(map_bytes)).convert("RGB")
     map_image = map_image.resize((final_width, map_height), Image.Resampling.LANCZOS)
 
@@ -273,7 +322,7 @@ def render_route_report(api_key, point_a, point_b, output_path, size, scale, map
     y = panel_y + padding
     distance_text = f"Panjang jalan: {format_distance(distance_m)}"
     draw.text((x, y), distance_text, fill=(255, 255, 255), font=title_font)
-    bearing_text = f"Bearing A ke B: {bearing:.1f} deg"
+    bearing_text = f"Rute: {route_label} | Bearing A ke B: {bearing:.1f} deg"
     draw.text((x, y + int(title_font.size * 1.25)), bearing_text, fill=(193, 216, 232), font=small_font)
 
     column_width = content_width
@@ -328,12 +377,19 @@ def main():
     parser.add_argument("--scale", type=int, default=2, choices=[1, 2], help="Google Static Maps scale, default: 2")
     parser.add_argument("--maptype", default="roadmap", choices=["roadmap", "satellite", "hybrid", "terrain"])
     parser.add_argument("--language", default="en", help="Google geocoding language, default: en")
+    parser.add_argument(
+        "--route",
+        default="driving",
+        choices=["driving", "walking", "bicycling", "straight"],
+        help="Route path type, default: driving. Use straight for direct line.",
+    )
     args = parser.parse_args()
 
     load_env(Path(".env"))
     api_key = require_api_key()
     point_a, point_b, source = resolve_coordinates(args)
-    distance_m = haversine_distance_meters(point_a, point_b)
+    route_info = get_route_info(api_key, point_a, point_b, args.route)
+    distance_m = route_info["distance_m"]
     bearing = initial_bearing_degrees(point_a, point_b)
     location_a = reverse_geocode(api_key, point_a, args.language)
     location_b = reverse_geocode(api_key, point_b, args.language)
@@ -343,6 +399,8 @@ def main():
         api_key,
         point_a,
         point_b,
+        route_info["path"],
+        route_info["label"],
         output_path,
         args.size,
         args.scale,
@@ -358,6 +416,7 @@ def main():
     print(f"Location A: {location_a['title']}")
     print(f"Point B: Lat {point_b[0]:.7f}, Long {point_b[1]:.7f}")
     print(f"Location B: {location_b['title']}")
+    print(f"Route: {route_info['label']}")
     print(f"Distance: {format_distance(distance_m)} ({distance_m:.2f} m)")
     print(f"Bearing: {bearing:.1f} deg")
     print(f"Output: {output_path}")

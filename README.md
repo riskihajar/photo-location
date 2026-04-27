@@ -19,6 +19,7 @@ Small Python utilities for field-report images:
   - Geocoding API
   - Time Zone API
   - Maps Static API
+  - Directions API
 
 ## Environment
 
@@ -90,7 +91,7 @@ Use this for road-condition field reports where you need distance between two lo
 
 The output is a 5:7 PNG containing:
 
-- map with line from point A to point B
+- map with route line from point A to point B
 - marker A and marker B
 - road length in meters
 - bearing from A to B
@@ -104,8 +105,11 @@ source ~/.zshrc && python3 render_distance_map.py \
   --from-lng 117.1715783333333 \
   --to-lat -0.5204814 \
   --to-lng 117.1706029 \
+  --route driving \
   -o output/distance_map_custom.png
 ```
+
+By default, `--route driving` follows the road using Google Directions API. Use `--route straight` if you need a direct line only.
 
 ### From Two Photos
 
@@ -130,6 +134,8 @@ python3 render_distance_map.py --help
 - `--language id` for Indonesian Google address results.
 - `--maptype satellite` for satellite imagery.
 - `--maptype hybrid` for satellite imagery with road labels.
+- `--route driving` to follow roads using Google Directions API.
+- `--route straight` to draw a direct line and use Haversine distance.
 - `--size 457x640` keeps the 5:7 aspect ratio.
 - `--scale 2` renders higher-resolution output.
 
@@ -137,7 +143,7 @@ python3 render_distance_map.py --help
 
 - Photos from WhatsApp, Instagram, or other social apps often lose EXIF/GPS metadata.
 - HEIC/HEIF preview/rendering is handled through ImageMagick conversion.
-- Distance is calculated using the Haversine formula, so it is straight-line distance between two coordinates, not routed road distance.
+- `--route driving` uses Google Directions API road distance; `--route straight` uses Haversine straight-line distance.
 - Generated images and local photos are ignored by git to avoid committing private field data.
 
 ## Files
