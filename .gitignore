@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Generated output
+output/
+*.tmp
+*.temp
+
+# Local photo inputs / privacy-sensitive media
+*.HEIC
+*.HEIF
+*.heic
+*.heif
+*.JPG
+*.JPEG
+*.PNG
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
